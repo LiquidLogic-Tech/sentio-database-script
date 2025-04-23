@@ -2,9 +2,7 @@ import axios from "axios";
 import type { TokenSymbol } from "./const";
 import { logger } from "./logger";
 import type { Tables } from "./database.types";
-import { createClient } from "@supabase/supabase-js";
-import type { Database } from "./database.types";
-import { supabase } from "./supabase";
+import mysql from "mysql2/promise";
 import { splitIntoChunks, updateLastFetchedTimestamp } from "./utils";
 import {
   bottleCreatedScripts,
@@ -13,11 +11,19 @@ import {
   bottleUpdatedScripts,
 } from "./sql";
 
-interface SentioQueryParams {
-  token: TokenSymbol;
-  from?: Date;
-  sql: string;
-}
+// Create MySQL connection pool
+const pool = mysql.createPool({
+  host: process.env.PLANETSCALE_HOST,
+  user: process.env.PLANETSCALE_USERNAME,
+  password: process.env.PLANETSCALE_PASSWORD,
+  database: process.env.PLANETSCALE_DATABASE,
+  ssl: {
+    rejectUnauthorized: true,
+  },
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+});
 
 // Event: Bottle Created
 async function cloneBottleCreatedToDatabase(token: TokenSymbol, from?: Date) {
@@ -65,24 +71,29 @@ async function cloneBottleCreatedToDatabase(token: TokenSymbol, from?: Date) {
         let lastRecordTime = new Date(lastRecord.timestamp).getTime();
         let fromTimestamp = from?.getTime() || 0;
 
-        if (fromTimestamp == lastRecordTime && insertedData == null) {
+        logger.info({ fromTimestamp, lastRecordTime });
+
+        if (fromTimestamp === lastRecordTime && insertedData === null) {
           // finished inserting
+          logger.info("Finished inserting - no new records at this timestamp");
           fetching = false;
         } else {
           from = new Date(lastRecordTime);
-          fetching = lastRecordTime <= new Date().getTime();
+          // Only continue fetching if we're not beyond current time
+          fetching = lastRecordTime < new Date().getTime();
+          logger.info(`Continuing to fetch from timestamp: ${from}`);
         }
       } else {
         logger.info("No response data");
         fetching = false;
       }
     }
+    logger.info({ fetching });
   } catch (error: any) {
     logger.error(
       `Error fetching ${token} data:`,
       error.response ? error.response.data : error.message,
     );
-    throw error;
   }
 }
 
@@ -117,60 +128,89 @@ async function insertBottleCreateToDB(data: Tables<"Bottle Create">[]) {
   try {
     // Get all IDs from the incoming data
     const incomingIds = data.map((record) => record.id);
-
     let existingIds = [];
 
     const incomingIdChunks = splitIntoChunks(incomingIds, 1000);
+    const connection = await pool.getConnection();
 
-    for (const chunk of incomingIdChunks) {
-      // Check which records already exist
-      const { data, error: selectError } = await supabase
-        .from("Bottle Create")
-        .select("id")
-        .in("id", chunk);
+    try {
+      for (const chunk of incomingIdChunks) {
+        // Check which records already exist
+        const [rows] = await connection.query(
+          "SELECT id FROM `Bottle_Create` WHERE id IN (?)",
+          [chunk],
+        );
 
-      const existingIds_ = data?.map((d) => d.id) || [];
-      existingIds.push(...existingIds_);
-
-      if (selectError) {
-        logger.error("Error checking existing records:", selectError);
-        throw selectError;
+        const existingIds_ = (rows as any[]).map((row) => row.id);
+        existingIds.push(...existingIds_);
       }
-    }
 
-    // Filter out records that already exist
-    const newRecords = data.filter(
-      (record) => !existingIds.includes(record.id),
-    );
+      // Filter out records that already exist
+      const newRecords = data.filter(
+        (record) => !existingIds.includes(record.id),
+      );
 
-    if (newRecords.length === 0) {
-      logger.info("No new records to insert - all records already exist");
-      return null;
-    }
-
-    // split to batches in 500 size
-    const chunks = splitIntoChunks(newRecords, 1000);
-
-    const insertedData = [];
-    for (const [i, chunk] of chunks.entries()) {
-      logger.info(`Processing chunk: ${i}`);
-      // Insert only new records
-      const { data, error: insertError } = await supabase
-        .from("Bottle Create")
-        .insert(chunk);
-
-      insertedData.push(data);
-
-      if (insertError) {
-        logger.error("Error inserting data:", insertError);
-        throw insertError;
+      if (newRecords.length === 0) {
+        logger.info("No new records to insert - all records already exist");
+        return null;
       }
-    }
 
-    logger.info(
-      `Successfully inserted ${newRecords.length} new records out of ${data.length} total records`,
-    );
-    return insertedData;
+      // Split to batches
+      const chunks = splitIntoChunks(newRecords, 1000);
+      const insertedData = [];
+
+      for (const [i, chunk] of chunks.entries()) {
+        logger.info(`Processing chunk: ${i}`);
+
+        // Build batch insert query
+        const values = chunk.flatMap((record) => {
+          // Parse the timestamp if it's a string
+          let formattedTimestamp = record.timestamp;
+          if (typeof record.timestamp === "string") {
+            // Parse the timestamp and format it for MySQL
+            const date = new Date(record.timestamp);
+            formattedTimestamp = date
+              .toISOString()
+              .slice(0, 23)
+              .replace("T", " ");
+          }
+
+          return [
+            record.id,
+            record.bottle_id,
+            record.buck_amount,
+            record.coin,
+            record.collateral_amount,
+            record.sender,
+            formattedTimestamp,
+            record.transaction_hash,
+          ];
+        });
+
+        // Keep your original placeholder and query structure
+        const placeholders = chunk
+          .map(() => "(?, ?, ?, ?, ?, ?, ?, ?)")
+          .join(", ");
+
+        const query = `
+          INSERT INTO Bottle_Create 
+          (id, bottle_id, buck_amount, coin, collateral_amount, sender, timestamp, transaction_hash) 
+          VALUES ${placeholders}
+        `;
+
+        const [result] = await connection.query(query, values);
+        insertedData.push(result);
+      }
+
+      logger.info(
+        `Successfully inserted ${newRecords.length} new records out of ${data.length} total records`,
+      );
+
+      return insertedData;
+    } finally {
+      logger.info("finally");
+      connection.release();
+    }
   } catch (error) {
     logger.error("Error in insertBottleCreateToDB:", error);
     throw error;
@@ -285,57 +325,76 @@ async function insertBottleUpdateToDB(data: Tables<"Bottle Update">[]) {
     let existingIds = [];
 
     const incomingIdChunks = splitIntoChunks(incomingIds, 1000);
+    const connection = await pool.getConnection();
 
-    for (const chunk of incomingIdChunks) {
-      // Check which records already exist
-      const { data, error: selectError } = await supabase
-        .from("Bottle Update")
-        .select("id")
-        .in("id", chunk);
+    try {
+      for (const chunk of incomingIdChunks) {
+        // Check which records already exist
+        const [rows] = await connection.query(
+          "SELECT id FROM `Bottle_Update` WHERE id IN (?)",
+          [chunk],
+        );
 
-      const existingIds_ = data?.map((d) => d.id) || [];
-      existingIds.push(...existingIds_);
-
-      if (selectError) {
-        logger.error({ chunk });
-        logger.error("Error checking existing records:", selectError);
-        throw selectError;
+        const existingIds_ = (rows as any[]).map((row) => row.id);
+        existingIds.push(...existingIds_);
       }
-    }
 
-    // Filter out records that already exist
-    const newRecords = data.filter(
-      (record) => !existingIds.includes(record.id),
-    );
+      // Filter out records that already exist
+      const newRecords = data.filter(
+        (record) => !existingIds.includes(record.id),
+      );
 
-    if (newRecords.length === 0) {
-      logger.info("No new records to insert - all records already exist");
-      return null;
-    }
-
-    // split to batches in 500 size
-    const chunks = splitIntoChunks(newRecords, 1000);
-
-    const insertedData = [];
-    for (const [i, chunk] of chunks.entries()) {
-      logger.info(`Processing chunk: ${i}`);
-      // Insert only new records
-      const { data, error: insertError } = await supabase
-        .from("Bottle Update")
-        .insert(chunk);
-
-      insertedData.push(data);
-
-      if (insertError) {
-        logger.error("Error inserting data:", insertError);
-        throw insertError;
+      if (newRecords.length === 0) {
+        logger.info("No new records to insert - all records already exist");
+        return null;
       }
-    }
 
-    logger.info(
-      `Successfully inserted ${newRecords.length} new records out of ${data.length} total records`,
-    );
-    return insertedData;
+      // Split to batches
+      const chunks = splitIntoChunks(newRecords, 1000);
+      const insertedData = [];
+
+      for (const [i, chunk] of chunks.entries()) {
+        logger.info(`Processing chunk: ${i}`);
+
+        // Build batch insert query
+        const placeholders = chunk
+          .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          .join(", ");
+
+        const values = chunk.flatMap((record) => [
+          record.id,
+          record.bottle_id,
+          record.buck_amount,
+          record.coin,
+          record.collateral_amount,
+          record.sender,
+          record.timestamp,
+          record.transaction_hash,
+          record.buck_change_amount,
+          record.buck_change_amount_usd,
+          record.collateral_change_amount,
+          record.collateral_change_usd,
+        ]);
+
+        const query = `
+          INSERT INTO Bottle_Update 
+          (id, bottle_id, buck_amount, coin, collateral_amount, sender, timestamp, transaction_hash, 
+           buck_change_amount, buck_change_amount_usd, collateral_change_amount, collateral_change_usd) 
+          VALUES ${placeholders}
+        `;
+
+        const [result] = await connection.query(query, values);
+        insertedData.push(result);
+      }
+
+      logger.info(
+        `Successfully inserted ${newRecords.length} new records out of ${data.length} total records`,
+      );
+
+      return insertedData;
+    } finally {
+      connection.release();
+    }
   } catch (error) {
     logger.error("Error in insertBottleUpdateToDB:", error);
     throw error;
@@ -438,60 +497,73 @@ async function insertBottleDestroyToDB(data: Tables<"Bottle Destroy">[]) {
   try {
     // Get all IDs from the incoming data
     const incomingIds = data.map((record) => record.id);
-
     let existingIds = [];
 
     const incomingIdChunks = splitIntoChunks(incomingIds, 1000);
+    const connection = await pool.getConnection();
 
-    for (const chunk of incomingIdChunks) {
-      // Check which records already exist
-      const { data, error: selectError } = await supabase
-        .from("Bottle Destroy")
-        .select("id")
-        .in("id", chunk);
+    try {
+      for (const chunk of incomingIdChunks) {
+        // Check which records already exist
+        const [rows] = await connection.query(
+          "SELECT id FROM `Bottle_Destroy` WHERE id IN (?)",
+          [chunk],
+        );
 
-      const existingIds_ = data?.map((d) => d.id) || [];
-      existingIds.push(...existingIds_);
-
-      if (selectError) {
-        logger.error("Error checking existing records:", selectError);
-        throw selectError;
+        const existingIds_ = (rows as any[]).map((row) => row.id);
+        existingIds.push(...existingIds_);
       }
-    }
 
-    // Filter out records that already exist
-    const newRecords = data.filter(
-      (record) => !existingIds.includes(record.id),
-    );
+      // Filter out records that already exist
+      const newRecords = data.filter(
+        (record) => !existingIds.includes(record.id),
+      );
 
-    if (newRecords.length === 0) {
-      logger.info("No new records to insert - all records already exist");
-      return null;
-    }
-
-    // split to batches in 500 size
-    const chunks = splitIntoChunks(newRecords, 1000);
-
-    const insertedData = [];
-    for (const [i, chunk] of chunks.entries()) {
-      logger.info(`Processing chunk: ${i}`);
-      // Insert only new records
-      const { data, error: insertError } = await supabase
-        .from("Bottle Destroy")
-        .insert(chunk);
-
-      insertedData.push(data);
-
-      if (insertError) {
-        logger.error("Error inserting data:", insertError);
-        throw insertError;
+      if (newRecords.length === 0) {
+        logger.info("No new records to insert - all records already exist");
+        return null;
       }
-    }
 
-    logger.info(
-      `Successfully inserted ${newRecords.length} new records out of ${data.length} total records`,
-    );
-    return insertedData;
+      // Split to batches
+      const chunks = splitIntoChunks(newRecords, 1000);
+      const insertedData = [];
+
+      for (const [i, chunk] of chunks.entries()) {
+        logger.info(`Processing chunk: ${i}`);
+
+        // Build batch insert query
+        const placeholders = chunk
+          .map(() => "(?, ?, ?, ?, ?, ?, ?)")
+          .join(", ");
+
+        const values = chunk.flatMap((record) => [
+          record.id,
+          record.bottle_id,
+          record.coin,
+          record.collateral_amount,
+          record.sender,
+          record.timestamp,
+          record.transaction_hash,
+        ]);
+
+        const query = `
+          INSERT INTO Bottle_Destroy 
+          (id, bottle_id, coin, collateral_amount, sender, timestamp, transaction_hash) 
+          VALUES ${placeholders}
+        `;
+
+        const [result] = await connection.query(query, values);
+        insertedData.push(result);
+      }
+
+      logger.info(
+        `Successfully inserted ${newRecords.length} new records out of ${data.length} total records`,
+      );
+
+      return insertedData;
+    } finally {
+      connection.release();
+    }
   } catch (error) {
     logger.error("Error in insertBottleDestroyToDB:", error);
     throw error;
@@ -606,60 +678,77 @@ async function insertBottleLiquidationToDB(
   try {
     // Get all IDs from the incoming data
     const incomingIds = data.map((record) => record.id);
-
     let existingIds = [];
 
     const incomingIdChunks = splitIntoChunks(incomingIds, 1000);
+    const connection = await pool.getConnection();
 
-    for (const chunk of incomingIdChunks) {
-      // Check which records already exist
-      const { data, error: selectError } = await supabase
-        .from("Bottle Liquidation")
-        .select("id")
-        .in("id", chunk);
+    try {
+      for (const chunk of incomingIdChunks) {
+        // Check which records already exist
+        const [rows] = await connection.query(
+          "SELECT id FROM `Bottle_Liquidation` WHERE id IN (?)",
+          [chunk],
+        );
 
-      const existingIds_ = data?.map((d) => d.id) || [];
-      existingIds.push(...existingIds_);
-
-      if (selectError) {
-        logger.error("Error checking existing records:", selectError);
-        throw selectError;
+        const existingIds_ = (rows as any[]).map((row) => row.id);
+        existingIds.push(...existingIds_);
       }
-    }
 
-    // Filter out records that already exist
-    const newRecords = data.filter(
-      (record) => !existingIds.includes(record.id),
-    );
+      // Filter out records that already exist
+      const newRecords = data.filter(
+        (record) => !existingIds.includes(record.id),
+      );
 
-    if (newRecords.length === 0) {
-      logger.info("No new records to insert - all records already exist");
-      return null;
-    }
-
-    // split to batches in 500 size
-    const chunks = splitIntoChunks(newRecords, 1000);
-
-    const insertedData = [];
-    for (const [i, chunk] of chunks.entries()) {
-      logger.info(`Processing chunk: ${i}`);
-      // Insert only new records
-      const { data, error: insertError } = await supabase
-        .from("Bottle Liquidation")
-        .insert(chunk);
-
-      insertedData.push(data);
-
-      if (insertError) {
-        logger.error("Error inserting data:", insertError);
-        throw insertError;
+      if (newRecords.length === 0) {
+        logger.info("No new records to insert - all records already exist");
+        return null;
       }
-    }
 
-    logger.info(
-      `Successfully inserted ${newRecords.length} new records out of ${data.length} total records`,
-    );
-    return insertedData;
+      // Split to batches
+      const chunks = splitIntoChunks(newRecords, 1000);
+      const insertedData = [];
+
+      for (const [i, chunk] of chunks.entries()) {
+        logger.info(`Processing chunk: ${i}`);
+
+        // Build batch insert query
+        const placeholders = chunk
+          .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          .join(", ");
+
+        const values = chunk.flatMap((record) => [
+          record.id,
+          record.bottle_id,
+          record.coin,
+          record.collateral_amount,
+          record.collateral_amount_usd,
+          record.liquidator_address,
+          record.pool_address,
+          record.profit_usd,
+          record.timestamp,
+          record.transaction_hash,
+        ]);
+
+        const query = `
+          INSERT INTO Bottle_Liquidation 
+          (id, bottle_id, coin, collateral_amount, collateral_amount_usd, 
+           liquidator_address, pool_address, profit_usd, timestamp, transaction_hash) 
+          VALUES ${placeholders}
+        `;
+
+        const [result] = await connection.query(query, values);
+        insertedData.push(result);
+      }
+
+      logger.info(
+        `Successfully inserted ${newRecords.length} new records out of ${data.length} total records`,
+      );
+
+      return insertedData;
+    } finally {
+      connection.release();
+    }
   } catch (error) {
     logger.error("Error in insertBottleLiquidationToDB:", error);
     throw error;
