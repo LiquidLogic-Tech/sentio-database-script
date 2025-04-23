@@ -19,7 +19,7 @@ export function bottleCreatedScripts(token: TokenSymbol, from?: Date) {
   }
   sql += ` ORDER BY timestamp ASC`;
 
-  return sql
+  return sql;
 }
 
 export function bottleUpdatedScripts(token: TokenSymbol, from?: Date) {
@@ -40,7 +40,7 @@ export function bottleUpdatedScripts(token: TokenSymbol, from?: Date) {
   }
   sql += ` ORDER BY timestamp ASC`;
 
-  return sql
+  return sql;
 }
 
 export function bottleDestroyedScripts(token: TokenSymbol, from?: Date) {
@@ -61,28 +61,28 @@ export function bottleDestroyedScripts(token: TokenSymbol, from?: Date) {
   }
   sql += ` ORDER BY timestamp ASC`;
 
-  return sql
+  return sql;
 }
 
 export function bottleLiquidationScripts(token: TokenSymbol, from?: Date) {
   // Load last fetched timestamp if no specific date is provided
   if (!from) {
     const config = loadConfig();
-    const lastTimestamp =
-      config.lastFetchedTimestamp[`${token}_Liquidation`];
+    const lastTimestamp = config.lastFetchedTimestamp[`${token}_Liquidation`];
     if (lastTimestamp) {
       from = new Date(lastTimestamp);
     }
   }
+  token = convertWALSymbol(token) as any;
 
   // Build SQL query with token filter and optional timestamp filter
   let sql = `SELECT * FROM Liquidations WHERE token_address = '${COINS_TYPE_LIST[token]}'`;
-  
+
   // Add timestamp filter if provided
   if (from) {
     sql += ` AND timestamp >= '${from.getTime()}'`;
   }
-  
+
   sql += ` ORDER BY timestamp ASC`;
 
   return sql;

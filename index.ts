@@ -9,13 +9,13 @@ import {
 } from "./commands";
 
 async function main() {
-  for (const coin of COLLATERAL_COINS) {
+  for (const coin of ["WAL", "sWAL", "haWAL"]) {
     logger.info(`Processing ${coin}...`);
     try {
-      // await cloneBottleCreatedToDatabase(coin);
-      // await cloneBottleUpdatedToDatabase(coin);
-      // await cloneBottleDestroyedToDatabase(coin);
-      await cloneBottleLiquidationToDatabase(coin)
+      await cloneBottleCreatedToDatabase(coin as any);
+      await cloneBottleUpdatedToDatabase(coin as any);
+      await cloneBottleDestroyedToDatabase(coin as any);
+      await cloneBottleLiquidationToDatabase(coin as any);
       logger.info(`Finished processing ${coin}`);
     } catch (error) {
       logger.error(`Error processing ${coin}:`, error);
