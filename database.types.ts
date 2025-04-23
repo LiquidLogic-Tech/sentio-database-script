@@ -72,6 +72,45 @@ export type Database = {
         }
         Relationships: []
       }
+      "Bottle Liquidation": {
+        Row: {
+          bottle_id: string | null
+          coin: string | null
+          collateral_amount: number | null
+          collateral_amount_usd: number | null
+          id: string
+          liquidator_address: string | null
+          pool_address: string | null
+          profit_usd: number | null
+          timestamp: string
+          transaction_hash: string | null
+        }
+        Insert: {
+          bottle_id?: string | null
+          coin?: string | null
+          collateral_amount?: number | null
+          collateral_amount_usd?: number | null
+          id: string
+          liquidator_address?: string | null
+          pool_address?: string | null
+          profit_usd?: number | null
+          timestamp: string
+          transaction_hash?: string | null
+        }
+        Update: {
+          bottle_id?: string | null
+          coin?: string | null
+          collateral_amount?: number | null
+          collateral_amount_usd?: number | null
+          id?: string
+          liquidator_address?: string | null
+          pool_address?: string | null
+          profit_usd?: number | null
+          timestamp?: string
+          transaction_hash?: string | null
+        }
+        Relationships: []
+      }
       "Bottle Update": {
         Row: {
           bottle_id: string | null
