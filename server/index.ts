@@ -81,6 +81,9 @@ const server = Bun.serve({
     }
 
     try {
+      if (url.pathname === "/health") {
+        return new Response(JSON.stringify({ status: "ok" }), { headers });
+      }
       // Main endpoint to fetch data
       if (url.pathname === "/api/fees") {
         try {
@@ -191,7 +194,7 @@ const server = Bun.serve({
   },
 });
 
-console.log(`Server running at http://localhost:${server.port}`);
+console.log(`Server running at http://0.0.0.0:${server.port}`);
 
 // Handle server errors
 process.on("unhandledRejection", (error) => {
