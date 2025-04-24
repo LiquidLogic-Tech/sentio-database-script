@@ -93,7 +93,7 @@ const server = Bun.serve({
           let params: any[] = [];
 
           if (queryParams) {
-            // Get summarized data for the specified day
+            // Get summarized data for the specified day and specific "from" values
             query = `
               SELECT 
                 DATE(timestamp) as date,
@@ -106,11 +106,12 @@ const server = Bun.serve({
                 MAX(timestamp) as last_record_time
               FROM Total_Fee_Value_From 
               WHERE timestamp >= ? AND timestamp <= ?
+                AND \`service\` IN ('borrow', 'charge', 'liquidate', 'redeem', 'discharge', 'flashmint', 'interest', 'flashloan')
               GROUP BY DATE(timestamp)
-            `;
+  `;
             params = [queryParams.startOfDay, queryParams.endOfDay];
           } else {
-            // If no timestamp provided, get today's data
+            // If no timestamp provided, get today's data with specific "from" values
             const { startOfDay, endOfDay } = getDayBoundaries(
               new Date().toISOString(),
             );
@@ -126,8 +127,9 @@ const server = Bun.serve({
                 MAX(timestamp) as last_record_time
               FROM Total_Fee_Value_From 
               WHERE timestamp >= ? AND timestamp <= ?
+                AND \`service\` IN ('borrow', 'charge', 'liquidate', 'redeem', 'discharge', 'flashmint', 'interest', 'flashloan')
               GROUP BY DATE(timestamp)
-            `;
+  `;
             params = [startOfDay, endOfDay];
           }
 

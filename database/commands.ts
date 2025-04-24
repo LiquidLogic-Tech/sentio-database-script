@@ -826,7 +826,7 @@ async function cloneTotalFeeValueFromToDatabase(from?: Date) {
         `query Total_Fee_Value_From data: bulk with time staring from: ${from}`,
       );
 
-      logger.info({ response });
+      logger.info({ rows });
 
       const dataInjectedToDB =
         convertSentioTotalFeeValueFromEventToDBSchema(rows);
@@ -871,13 +871,21 @@ function convertSentioTotalFeeValueFromEventToDBSchema(
   data: SentioTotalFeeValueFrom[],
 ) {
   return data.map(
-    ({ value, distinct_event_id, coin_symbol, timestamp, transaction_hash }) =>
+    ({
+      value,
+      distinct_event_id,
+      coin_symbol,
+      timestamp,
+      transaction_hash,
+      from,
+    }) =>
       ({
         id: distinct_event_id,
         coin: coin_symbol,
         fee_value: value,
         timestamp,
         transaction_hash,
+        service: from,
       }) as Tables<"Total Fee Value From">,
   );
 }
@@ -923,7 +931,7 @@ async function insertTotalFeeValueFromToDB(
         logger.info(`Processing chunk: ${i}`);
 
         // Build batch insert query
-        const placeholders = chunk.map(() => "(?, ?, ?, ?, ?)").join(", ");
+        const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?)").join(", ");
 
         const values = chunk.flatMap((record) => {
           // Parse the timestamp if it's a string
@@ -943,12 +951,13 @@ async function insertTotalFeeValueFromToDB(
             record.fee_value,
             formattedTimestamp,
             record.transaction_hash,
+            record.service,
           ];
         });
 
         const query = `
           INSERT INTO Total_Fee_Value_From 
-          (id, coin, fee_value, timestamp, transaction_hash) 
+          (id, coin, fee_value, timestamp, transaction_hash, service) 
           VALUES ${placeholders}
         `;
 

@@ -163,6 +163,7 @@ export type Database = {
           fee_value: number | null;
           timestamp: string;
           transaction_hash: string | null;
+          service: string;
         };
         Insert: {
           id: string;
@@ -170,6 +171,7 @@ export type Database = {
           fee_value?: number | null;
           timestamp?: string;
           transaction_hash?: string | null;
+          service?: string;
         };
         Update: {
           id: string;
@@ -177,6 +179,7 @@ export type Database = {
           fee_value?: number | null;
           timestamp?: string;
           transaction_hash?: string | null;
+          service?: string;
         };
         Relationships: [];
       };
