@@ -9,6 +9,7 @@ import {
   bottleDestroyedScripts,
   bottleLiquidationScripts,
   bottleUpdatedScripts,
+  totalFeeValueFromScripts,
 } from "./sql";
 
 // Create MySQL connection pool
@@ -361,20 +362,33 @@ async function insertBottleUpdateToDB(data: Tables<"Bottle Update">[]) {
           .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
           .join(", ");
 
-        const values = chunk.flatMap((record) => [
-          record.id,
-          record.bottle_id,
-          record.buck_amount,
-          record.coin,
-          record.collateral_amount,
-          record.sender,
-          record.timestamp,
-          record.transaction_hash,
-          record.buck_change_amount,
-          record.buck_change_amount_usd,
-          record.collateral_change_amount,
-          record.collateral_change_usd,
-        ]);
+        const values = chunk.flatMap((record) => {
+          // Parse the timestamp if it's a string
+          let formattedTimestamp = record.timestamp;
+          if (typeof record.timestamp === "string") {
+            // Parse the timestamp and format it for MySQL
+            const date = new Date(record.timestamp);
+            formattedTimestamp = date
+              .toISOString()
+              .slice(0, 23)
+              .replace("T", " ");
+          }
+
+          return [
+            record.id,
+            record.bottle_id,
+            record.buck_amount,
+            record.coin,
+            record.collateral_amount,
+            record.sender,
+            formattedTimestamp,
+            record.transaction_hash,
+            record.buck_change_amount,
+            record.buck_change_amount_usd,
+            record.collateral_change_amount,
+            record.collateral_change_usd,
+          ];
+        });
 
         const query = `
           INSERT INTO Bottle_Update 
@@ -536,15 +550,28 @@ async function insertBottleDestroyToDB(data: Tables<"Bottle Destroy">[]) {
           .map(() => "(?, ?, ?, ?, ?, ?, ?)")
           .join(", ");
 
-        const values = chunk.flatMap((record) => [
-          record.id,
-          record.bottle_id,
-          record.coin,
-          record.collateral_amount,
-          record.sender,
-          record.timestamp,
-          record.transaction_hash,
-        ]);
+        const values = chunk.flatMap((record) => {
+          // Parse the timestamp if it's a string
+          let formattedTimestamp = record.timestamp;
+          if (typeof record.timestamp === "string") {
+            // Parse the timestamp and format it for MySQL
+            const date = new Date(record.timestamp);
+            formattedTimestamp = date
+              .toISOString()
+              .slice(0, 23)
+              .replace("T", " ");
+          }
+
+          return [
+            record.id,
+            record.bottle_id,
+            record.coin,
+            record.collateral_amount,
+            record.sender,
+            formattedTimestamp,
+            record.transaction_hash,
+          ];
+        });
 
         const query = `
           INSERT INTO Bottle_Destroy 
@@ -717,18 +744,33 @@ async function insertBottleLiquidationToDB(
           .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
           .join(", ");
 
-        const values = chunk.flatMap((record) => [
-          record.id,
-          record.bottle_id,
-          record.coin,
-          record.collateral_amount,
-          record.collateral_amount_usd,
-          record.liquidator_address,
-          record.pool_address,
-          record.profit_usd,
-          record.timestamp,
-          record.transaction_hash,
-        ]);
+        const values = chunk.flatMap((record) => {
+          // Parse the timestamp if it's a string
+          let formattedTimestamp = record.timestamp;
+          if (typeof record.timestamp === "string") {
+            // Parse the timestamp and format it for MySQL
+            const date = new Date(record.timestamp);
+            formattedTimestamp = date
+              .toISOString()
+              .slice(0, 23)
+              .replace("T", " ");
+          }
+
+          logger.info({ formattedTimestamp });
+
+          return [
+            record.id,
+            record.bottle_id,
+            record.coin,
+            record.collateral_amount,
+            record.collateral_amount_usd,
+            record.liquidator_address,
+            record.pool_address,
+            record.profit_usd,
+            formattedTimestamp,
+            record.transaction_hash,
+          ];
+        });
 
         const query = `
           INSERT INTO Bottle_Liquidation 
@@ -755,9 +797,183 @@ async function insertBottleLiquidationToDB(
   }
 }
 
+// Total_Fee_Value_From
+async function cloneTotalFeeValueFromToDatabase(from?: Date) {
+  try {
+    let fetching = true;
+
+    while (fetching) {
+      const sql = totalFeeValueFromScripts(from);
+      const response = await axios({
+        method: "post",
+        url: "https://app.sentio.xyz/api/v1/analytics/bucket/bucketprotocol-obl/sql/execute",
+        headers: {
+          "Content-Type": "application/json",
+          "api-key": process.env.SENTIO_API_KEY,
+        },
+        data: {
+          sqlQuery: {
+            sql,
+            size: 10000,
+          },
+        },
+      });
+
+      logger.info(response.data);
+      const rows = response.data.result.rows;
+      logger.debug({ rows: response });
+      logger.info(
+        `query Total_Fee_Value_From data: bulk with time staring from: ${from}`,
+      );
+
+      logger.info({ response });
+
+      const dataInjectedToDB =
+        convertSentioTotalFeeValueFromEventToDBSchema(rows);
+
+      logger.info({ dataInjectedToDB });
+
+      const insertedData = await insertTotalFeeValueFromToDB(dataInjectedToDB);
+
+      // Update last fetched timestamp if we have data
+      if (rows.length > 0) {
+        const lastRecord = rows[rows.length - 1];
+        updateLastFetchedTimestamp(
+          `Total_Fee_Value_From`,
+          lastRecord.timestamp,
+        );
+
+        let lastRecordTime = new Date(lastRecord.timestamp).getTime();
+        let fromTimestamp = from?.getTime() || 0;
+
+        if (fromTimestamp == lastRecordTime && insertedData == null) {
+          // finished inserting
+          fetching = false;
+        } else {
+          from = new Date(lastRecordTime);
+          fetching = lastRecordTime <= new Date().getTime();
+        }
+      } else {
+        logger.info("No response data");
+        fetching = false;
+      }
+    }
+  } catch (error: any) {
+    logger.error(
+      `Error fetching Total_Fee_Value_From data:`,
+      error.response ? error.response.data : error.message,
+    );
+    throw error;
+  }
+}
+
+function convertSentioTotalFeeValueFromEventToDBSchema(
+  data: SentioTotalFeeValueFrom[],
+) {
+  return data.map(
+    ({ value, distinct_event_id, coin_symbol, timestamp, transaction_hash }) =>
+      ({
+        id: distinct_event_id,
+        coin: coin_symbol,
+        fee_value: value,
+        timestamp,
+        transaction_hash,
+      }) as Tables<"Total Fee Value From">,
+  );
+}
+
+async function insertTotalFeeValueFromToDB(
+  data: Tables<"Total Fee Value From">[],
+) {
+  try {
+    // Get all IDs from the incoming data
+    const incomingIds = data.map((record) => record.id);
+    let existingIds = [];
+
+    const incomingIdChunks = splitIntoChunks(incomingIds, 1000);
+    const connection = await pool.getConnection();
+
+    try {
+      for (const chunk of incomingIdChunks) {
+        // Check which records already exist
+        const [rows] = await connection.query(
+          "SELECT id FROM `Total_Fee_Value_From` WHERE id IN (?)",
+          [chunk],
+        );
+
+        const existingIds_ = (rows as any[]).map((row) => row.id);
+        existingIds.push(...existingIds_);
+      }
+
+      // Filter out records that already exist
+      const newRecords = data.filter(
+        (record) => !existingIds.includes(record.id),
+      );
+
+      if (newRecords.length === 0) {
+        logger.info("No new records to insert - all records already exist");
+        return null;
+      }
+
+      // Split to batches
+      const chunks = splitIntoChunks(newRecords, 1000);
+      const insertedData = [];
+
+      for (const [i, chunk] of chunks.entries()) {
+        logger.info(`Processing chunk: ${i}`);
+
+        // Build batch insert query
+        const placeholders = chunk.map(() => "(?, ?, ?, ?, ?)").join(", ");
+
+        const values = chunk.flatMap((record) => {
+          // Parse the timestamp if it's a string
+          let formattedTimestamp = record.timestamp;
+          if (typeof record.timestamp === "string") {
+            // Parse the timestamp and format it for MySQL
+            const date = new Date(record.timestamp);
+            formattedTimestamp = date
+              .toISOString()
+              .slice(0, 23)
+              .replace("T", " ");
+          }
+
+          return [
+            record.id,
+            record.coin,
+            record.fee_value,
+            formattedTimestamp,
+            record.transaction_hash,
+          ];
+        });
+
+        const query = `
+          INSERT INTO Total_Fee_Value_From 
+          (id, coin, fee_value, timestamp, transaction_hash) 
+          VALUES ${placeholders}
+        `;
+
+        const [result] = await connection.query(query, values);
+        insertedData.push(result);
+      }
+
+      logger.info(
+        `Successfully inserted ${newRecords.length} new records out of ${data.length} total records`,
+      );
+
+      return insertedData;
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    logger.error("Error in insertTotalFeeValueFromToDB:", error);
+    throw error;
+  }
+}
+
 export {
   cloneBottleCreatedToDatabase,
   cloneBottleUpdatedToDatabase,
   cloneBottleDestroyedToDatabase,
   cloneBottleLiquidationToDatabase,
+  cloneTotalFeeValueFromToDatabase,
 };

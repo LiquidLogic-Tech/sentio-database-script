@@ -28,6 +28,7 @@ export const COLLATERAL_COINS = [
   "DEEP",
   "haSUI",
   "WAL",
+  "wWAL",
   "sWAL",
   "haWAL",
   "sSBUSDT",

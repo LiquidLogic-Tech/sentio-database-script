@@ -1,6 +1,13 @@
 import { COINS_TYPE_LIST, type TokenSymbol } from "./const";
 import { loadConfig } from "./utils";
 
+const covnerWrongSymbol = (s: TokenSymbol) => {
+  if (s == "haWAL") return "HAWAL";
+  if (s == "wWAL") return "WWAL";
+
+  return s;
+};
+
 export function bottleCreatedScripts(token: TokenSymbol, from?: Date) {
   // Load last fetched timestamp if no specific date is provided
   if (!from) {
@@ -11,6 +18,8 @@ export function bottleCreatedScripts(token: TokenSymbol, from?: Date) {
       from = new Date(lastTimestamp);
     }
   }
+
+  token = covnerWrongSymbol(token) as any;
 
   // Build SQL query with timestamp filter if needed
   let sql = `SELECT * from ${token}_Bottle_Created`;
@@ -33,6 +42,8 @@ export function bottleUpdatedScripts(token: TokenSymbol, from?: Date) {
     }
   }
 
+  token = covnerWrongSymbol(token) as any;
+
   // Build SQL query with timestamp filter if needed
   let sql = `SELECT * from ${token}_Bottle_Updated`;
   if (from) {
@@ -54,6 +65,8 @@ export function bottleDestroyedScripts(token: TokenSymbol, from?: Date) {
     }
   }
 
+  token = covnerWrongSymbol(token) as any;
+
   // Build SQL query with timestamp filter if needed
   let sql = `SELECT * from ${token}_Bottle_Destroyed`;
   if (from) {
@@ -73,7 +86,6 @@ export function bottleLiquidationScripts(token: TokenSymbol, from?: Date) {
       from = new Date(lastTimestamp);
     }
   }
-  token = convertWALSymbol(token) as any;
 
   // Build SQL query with token filter and optional timestamp filter
   let sql = `SELECT * FROM Liquidations WHERE token_address = '${COINS_TYPE_LIST[token]}'`;
@@ -81,6 +93,29 @@ export function bottleLiquidationScripts(token: TokenSymbol, from?: Date) {
   // Add timestamp filter if provided
   if (from) {
     sql += ` AND timestamp >= '${from.getTime()}'`;
+  }
+
+  sql += ` ORDER BY timestamp ASC`;
+
+  return sql;
+}
+
+export function totalFeeValueFromScripts(from?: Date) {
+  // Load last fetched timestamp if no specific date is provided
+  if (!from) {
+    const config = loadConfig();
+    const lastTimestamp = config.lastFetchedTimestamp["Total_Fee_Value_From"];
+    if (lastTimestamp) {
+      from = new Date(lastTimestamp);
+    }
+  }
+
+  // Build SQL query with token filter and optional timestamp filter
+  let sql = "SELECT * FROM Total_Fee_Value_From";
+
+  // Add timestamp filter if provided
+  if (from) {
+    sql += ` WHERE timestamp >= '${from.getTime()}'`;
   }
 
   sql += ` ORDER BY timestamp ASC`;
