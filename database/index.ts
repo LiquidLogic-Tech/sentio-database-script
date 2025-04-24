@@ -24,7 +24,7 @@ async function main() {
   }
   logger.info("All coins processed");
 
-  await cloneTotalFeeValueFromToDatabase()
+  await cloneTotalFeeValueFromToDatabase();
   process.exit(0);
 }
 
