@@ -77,7 +77,6 @@ export type Database = {
           bottle_id: string | null;
           coin: string | null;
           collateral_amount: number | null;
-          collateral_amount_usd: number | null;
           id: string;
           liquidator_address: string | null;
           pool_address: string | null;
@@ -89,7 +88,6 @@ export type Database = {
           bottle_id?: string | null;
           coin?: string | null;
           collateral_amount?: number | null;
-          collateral_amount_usd?: number | null;
           id: string;
           liquidator_address?: string | null;
           pool_address?: string | null;
@@ -101,7 +99,6 @@ export type Database = {
           bottle_id?: string | null;
           coin?: string | null;
           collateral_amount?: number | null;
-          collateral_amount_usd?: number | null;
           id?: string;
           liquidator_address?: string | null;
           pool_address?: string | null;
@@ -116,11 +113,9 @@ export type Database = {
           bottle_id: string | null;
           buck_amount: number | null;
           buck_change_amount: number | null;
-          buck_change_amount_usd: number | null;
           coin: string | null;
           collateral_amount: number | null;
           collateral_change_amount: number | null;
-          collateral_change_usd: number | null;
           id: string;
           sender: string | null;
           timestamp: string;
@@ -130,11 +125,9 @@ export type Database = {
           bottle_id?: string | null;
           buck_amount?: number | null;
           buck_change_amount?: number | null;
-          buck_change_amount_usd?: number | null;
           coin?: string | null;
           collateral_amount?: number | null;
           collateral_change_amount?: number | null;
-          collateral_change_usd?: number | null;
           id: string;
           sender?: string | null;
           timestamp: string;
@@ -144,11 +137,9 @@ export type Database = {
           bottle_id?: string | null;
           buck_amount?: number | null;
           buck_change_amount?: number | null;
-          buck_change_amount_usd?: number | null;
           coin?: string | null;
           collateral_amount?: number | null;
           collateral_change_amount?: number | null;
-          collateral_change_usd?: number | null;
           id?: string;
           sender?: string | null;
           timestamp?: string;

@@ -85,6 +85,10 @@ async function cloneBottleCreatedToDatabase(token: TokenSymbol, from?: Date) {
           logger.info(`Continuing to fetch from timestamp: ${from}`);
         }
       } else {
+        updateLastFetchedTimestamp(
+          `${token}_Bottle_Created`,
+           new Date().toISOString(),
+        );
         logger.info("No response data");
         fetching = false;
       }
@@ -273,6 +277,11 @@ async function cloneBottleUpdatedToDatabase(token: TokenSymbol, from?: Date) {
       } else {
         logger.info("No response data");
         fetching = false;
+
+        updateLastFetchedTimestamp(
+          `${token}_Bottle_Updated`,
+          new Date().toISOString(),
+        );
       }
     }
   } catch (error: any) {
@@ -298,9 +307,7 @@ function convertSentioBottleUpdatedEventToDBSchema(
       timestamp,
       transaction_hash,
       buck_change_amount,
-      buck_change_amount_usd,
       collateral_change_amount,
-      collateral_change_usd,
     }) =>
       ({
         id: `${token}-${distinct_event_id}`,
@@ -312,9 +319,7 @@ function convertSentioBottleUpdatedEventToDBSchema(
         timestamp,
         transaction_hash,
         buck_change_amount,
-        buck_change_amount_usd,
         collateral_change_amount,
-        collateral_change_usd,
       }) as Tables<"Bottle Update">,
   );
 }
@@ -359,7 +364,7 @@ async function insertBottleUpdateToDB(data: Tables<"Bottle Update">[]) {
 
         // Build batch insert query
         const placeholders = chunk
-          .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
           .join(", ");
 
         const values = chunk.flatMap((record) => {
@@ -384,16 +389,14 @@ async function insertBottleUpdateToDB(data: Tables<"Bottle Update">[]) {
             formattedTimestamp,
             record.transaction_hash,
             record.buck_change_amount,
-            record.buck_change_amount_usd,
             record.collateral_change_amount,
-            record.collateral_change_usd,
           ];
         });
 
         const query = `
           INSERT INTO Bottle_Update 
           (id, bottle_id, buck_amount, coin, collateral_amount, sender, timestamp, transaction_hash, 
-           buck_change_amount, buck_change_amount_usd, collateral_change_amount, collateral_change_usd) 
+           buck_change_amount, collateral_change_amount) 
           VALUES ${placeholders}
         `;
 
@@ -496,6 +499,10 @@ async function cloneBottleDestroyedToDatabase(token: TokenSymbol, from?: Date) {
       } else {
         logger.info("No response data");
         fetching = false;
+        updateLastFetchedTimestamp(
+          `${token}_Bottle_Destroyed`,
+          new Date().toISOString()
+        );
       }
     }
   } catch (error: any) {
@@ -657,6 +664,11 @@ async function cloneBottleLiquidationToDatabase(
       } else {
         logger.info("No response data");
         fetching = false;
+
+        updateLastFetchedTimestamp(
+          `${token}_Bottle_Liquidation`,
+          new Date().toISOString()
+        );
       }
     }
   } catch (error: any) {
@@ -676,7 +688,6 @@ function convertSentioBottleLiquidationEventToDBSchema(
     ({
       distinct_event_id,
       amount,
-      amount_usd,
       timestamp,
       transaction_hash,
       user_address,
@@ -689,7 +700,6 @@ function convertSentioBottleLiquidationEventToDBSchema(
         bottle_id: user_address,
         coin: token,
         collateral_amount: amount,
-        collateral_amount_usd: amount_usd,
         liquidator_address,
         pool_address,
         profit_usd,
@@ -741,7 +751,7 @@ async function insertBottleLiquidationToDB(
 
         // Build batch insert query
         const placeholders = chunk
-          .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?)")
           .join(", ");
 
         const values = chunk.flatMap((record) => {
@@ -763,7 +773,6 @@ async function insertBottleLiquidationToDB(
             record.bottle_id,
             record.coin,
             record.collateral_amount,
-            record.collateral_amount_usd,
             record.liquidator_address,
             record.pool_address,
             record.profit_usd,
@@ -774,7 +783,7 @@ async function insertBottleLiquidationToDB(
 
         const query = `
           INSERT INTO Bottle_Liquidation 
-          (id, bottle_id, coin, collateral_amount, collateral_amount_usd, 
+          (id, bottle_id, coin, collateral_amount, 
            liquidator_address, pool_address, profit_usd, timestamp, transaction_hash) 
           VALUES ${placeholders}
         `;
@@ -856,6 +865,11 @@ async function cloneTotalFeeValueFromToDatabase(from?: Date) {
       } else {
         logger.info("No response data");
         fetching = false;
+
+        updateLastFetchedTimestamp(
+          `Total_Fee_Value_From`,
+          new Date().toISOString()
+        );
       }
     }
   } catch (error: any) {
