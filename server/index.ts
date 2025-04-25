@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import mysql from "mysql2/promise";
 import { type Server } from "bun";
+import { COLLATERAL_COINS } from "../database/const";
 
 // Configure MySQL connection pool
 const pool = mysql.createPool({
@@ -107,6 +108,7 @@ const server = Bun.serve({
               FROM Total_Fee_Value_From 
               WHERE timestamp >= ? AND timestamp <= ?
                 AND \`service\` IN ('borrow', 'charge', 'liquidate', 'redeem', 'discharge', 'flashmint', 'interest', 'flashloan')
+                AND coin IN (${[...COLLATERAL_COINS, "BUCK"].map((coin) => `'${coin}'`).join(", ")})
               GROUP BY DATE(timestamp)
   `;
             params = [queryParams.startOfDay, queryParams.endOfDay];
@@ -128,6 +130,7 @@ const server = Bun.serve({
               FROM Total_Fee_Value_From 
               WHERE timestamp >= ? AND timestamp <= ?
                 AND \`service\` IN ('borrow', 'charge', 'liquidate', 'redeem', 'discharge', 'flashmint', 'interest', 'flashloan')
+                AND coin IN (${[...COLLATERAL_COINS, "BUCK"].map((coin) => `'${coin}'`).join(", ")})
               GROUP BY DATE(timestamp)
   `;
             params = [startOfDay, endOfDay];
