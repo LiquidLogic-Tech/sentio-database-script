@@ -2,6 +2,8 @@ import { Database } from "bun:sqlite";
 import mysql from "mysql2/promise";
 import { type Server } from "bun";
 import { COLLATERAL_COINS } from "../database/const";
+import { BucketClient } from "bucket-protocol-sdk";
+import { getFullnodeUrl, SuiClient } from "@mysten/sui/client";
 
 // Configure MySQL connection pool
 const pool = mysql.createPool({
@@ -172,6 +174,78 @@ const server = Bun.serve({
             }),
             {
               status: 400,
+              headers,
+            },
+          );
+        }
+      }
+
+      if (url.pathname === "/api/checkOrbiterQuest") {
+        const owner = url.searchParams.get("address");
+
+        if (!owner) {
+          return new Response(
+            JSON.stringify({
+              error: "Missing required parameter: address",
+            }),
+            {
+              status: 400,
+              headers,
+            },
+          );
+        }
+
+        async function validateBucketQuest(owner: string) {
+          const suiClient = new SuiClient({ url: getFullnodeUrl("mainnet") });
+          const bucketClient = new BucketClient();
+          const prices = await bucketClient.getPrices();
+          const res = (await suiClient.getOwnedObjects({
+            owner,
+            filter: {
+              StructType:
+                "0x75b23bde4de9aca930d8c1f1780aa65ee777d8b33c3045b053a178b452222e82::fountain_core::StakeProof<0x1798f84ee72176114ddbf5525a6d964c5f8ea1b3738d08d50d0d3de4cf584884::sbuck::SBUCK, 0x2::sui::SUI>",
+            },
+            options: {
+              showContent: true,
+              showType: true,
+            },
+          })) as any;
+          const totalLockedSbuck = res.data.reduce((acc, d) => {
+            const amt = d.data?.content.fields.stake_amount;
+
+            return acc + Number(amt);
+          }, 0);
+
+          const totalLockedBuck =
+            (totalLockedSbuck / 10 ** 9) * (prices.sBUCK || 1);
+          const requiredBuckAmount = 100; // 100 BUCK
+          const isValid = totalLockedBuck >= requiredBuckAmount;
+          const message = isValid
+            ? "Verification succeeded"
+            : "Verification failed";
+          const result = {
+            totalLockedBuck,
+            requiredBuckAmount,
+          };
+
+          return {
+            isValid,
+            message,
+            result,
+          };
+        }
+
+        try {
+          const result = await validateBucketQuest(owner);
+          return new Response(JSON.stringify(result), { headers });
+        } catch (error) {
+          return new Response(
+            JSON.stringify({
+              error: "Failed to validate quest",
+              message: error instanceof Error ? error.message : "Unknown error",
+            }),
+            {
+              status: 500,
               headers,
             },
           );

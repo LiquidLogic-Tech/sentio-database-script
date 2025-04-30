@@ -1,13 +1,6 @@
 import { COINS_TYPE_LIST, type TokenSymbol } from "./const";
 import { loadConfig } from "./utils";
 
-const covnerWrongSymbol = (s: TokenSymbol) => {
-  if (s == "haWAL") return "HAWAL";
-  if (s == "wWAL") return "WWAL";
-
-  return s;
-};
-
 export function bottleCreatedScripts(token: TokenSymbol, from?: Date) {
   // Load last fetched timestamp if no specific date is provided
   if (!from) {
@@ -18,8 +11,6 @@ export function bottleCreatedScripts(token: TokenSymbol, from?: Date) {
       from = new Date(lastTimestamp);
     }
   }
-
-  token = covnerWrongSymbol(token) as any;
 
   // Build SQL query with timestamp filter if needed
   let sql = `SELECT * from ${token}_Bottle_Created`;
@@ -42,8 +33,6 @@ export function bottleUpdatedScripts(token: TokenSymbol, from?: Date) {
     }
   }
 
-  token = covnerWrongSymbol(token) as any;
-
   // Build SQL query with timestamp filter if needed
   let sql = `SELECT * from ${token}_Bottle_Updated`;
   if (from) {
@@ -64,8 +53,6 @@ export function bottleDestroyedScripts(token: TokenSymbol, from?: Date) {
       from = new Date(lastTimestamp);
     }
   }
-
-  token = covnerWrongSymbol(token) as any;
 
   // Build SQL query with timestamp filter if needed
   let sql = `SELECT * from ${token}_Bottle_Destroyed`;
