@@ -21,6 +21,7 @@ type TokenInfo = {
   address: string;
 };
 
+// sentio
 type SentioBottleCreated = {
   address: string;
   block_number: number;
@@ -141,3 +142,59 @@ type SentioTotalFeeValueFrom = {
   transaction_index: number;
   value: number;
 };
+
+// Database
+interface BucketBottleCreateSchema {
+  bottle_id: string | null;
+  buck_amount: number | null;
+  coin: string | null;
+  collateral_amount: number | null;
+  id: string;
+  sender: string | null;
+  timestamp: string;
+  transaction_hash: string | null;
+}
+
+interface BucketBottleDestroySchema {
+  bottle_id: string;
+  coin: string | null;
+  collateral_amount: number | null;
+  id: string;
+  sender: string | null;
+  timestamp: string | null;
+  transaction_hash: string | null;
+}
+
+interface BucketBottleLiquidationSchema {
+  bottle_id: string | null;
+  coin: string | null;
+  collateral_amount: number | null;
+  id: string;
+  liquidator_address: string | null;
+  pool_address: string | null;
+  profit_usd: number | null;
+  timestamp: string;
+  transaction_hash: string | null;
+}
+
+interface BucketBottleUpdateSchema {
+  bottle_id: string | null;
+  buck_amount: number | null;
+  buck_change_amount: number | null;
+  coin: string | null;
+  collateral_amount: number | null;
+  collateral_change_amount: number | null;
+  id: string;
+  sender: string | null;
+  timestamp: string;
+  transaction_hash: string | null;
+}
+
+interface BucketTotalFeeValueFromSchema {
+  id: string;
+  coin: string | null;
+  fee_value: number | null;
+  timestamp: string;
+  transaction_hash: string | null;
+  service: string;
+}

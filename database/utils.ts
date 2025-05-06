@@ -13,14 +13,50 @@ export function splitIntoChunks(arr: any[], chunkSize: number): any[][] {
   return result;
 }
 
-export function loadConfig() {
+const PROTOCOLS = ["Bucket"] as const;
+type ProtocolKey = (typeof PROTOCOLS)[number];
+
+const DATA = ["LastFetchedTimestamp"] as const;
+type DataKey = (typeof DATA)[number];
+
+type ConfigType = {
+  LastFetchedTimestamp: Record<ProtocolKey, Record<string, string | null>>;
+};
+
+export function loadConfig(): ConfigType {
   try {
-    return yaml.load(fs.readFileSync(CONFIG_PATH, "utf8")) as {
-      lastFetchedTimestamp: Record<string, string | null>;
-    };
+    const rawConfig = yaml.load(
+      fs.readFileSync(CONFIG_PATH, "utf8"),
+    ) as ConfigType;
+
+    if (!rawConfig) {
+      return {
+        LastFetchedTimestamp: {
+          Bucket: {},
+        },
+      };
+    }
+
+    // Ensure proper structure exists
+    if (!rawConfig.LastFetchedTimestamp) {
+      rawConfig.LastFetchedTimestamp = {
+        Bucket: {},
+      };
+    }
+
+    // Ensure Bucket protocol exists
+    if (!rawConfig.LastFetchedTimestamp.Bucket) {
+      rawConfig.LastFetchedTimestamp.Bucket = {};
+    }
+
+    return rawConfig;
   } catch (error) {
     logger.error("Error loading config:", error);
-    return { lastFetchedTimestamp: {} };
+    return {
+      LastFetchedTimestamp: {
+        Bucket: {},
+      },
+    };
   }
 }
 
@@ -32,8 +68,16 @@ export function saveConfig(config: any) {
   }
 }
 
-export function updateLastFetchedTimestamp(eventName: string, timestamp: string) {
+export function updateLastFetchedTimestamp(
+  protocolName: ProtocolKey,
+  eventName: string,
+  timestamp: string,
+) {
   const config = loadConfig();
-  config.lastFetchedTimestamp[eventName] = timestamp;
+
+  if (!config.LastFetchedTimestamp[protocolName]) {
+    config.LastFetchedTimestamp[protocolName] = {};
+  }
+  config.LastFetchedTimestamp[protocolName][eventName] = timestamp;
   saveConfig(config);
 }

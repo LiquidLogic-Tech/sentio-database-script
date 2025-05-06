@@ -1,30 +1,16 @@
-import axios from "axios";
-import type { TokenSymbol } from "./const";
-import { logger } from "./logger";
-import type { Tables } from "./database.types";
-import mysql from "mysql2/promise";
-import { splitIntoChunks, updateLastFetchedTimestamp } from "./utils";
 import {
   bottleCreatedScripts,
   bottleDestroyedScripts,
   bottleLiquidationScripts,
   bottleUpdatedScripts,
   totalFeeValueFromScripts,
-} from "./sql";
-
-// Create MySQL connection pool
-const pool = mysql.createPool({
-  host: process.env.PLANETSCALE_HOST,
-  user: process.env.PLANETSCALE_USERNAME,
-  password: process.env.PLANETSCALE_PASSWORD,
-  database: process.env.PLANETSCALE_DATABASE,
-  ssl: {
-    rejectUnauthorized: true,
-  },
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-});
+} from "../sql";
+import type { TokenSymbol } from "../const";
+import { splitIntoChunks, updateLastFetchedTimestamp } from "../utils";
+import { logger } from "../logger";
+import axios from "axios";
+import { pool } from ".";
+import { BUCKET_TABLE_NAMES, type BucketTables } from "../types/database";
 
 // Event: Bottle Created
 async function cloneBottleCreatedToDatabase(token: TokenSymbol, from?: Date) {
@@ -65,6 +51,7 @@ async function cloneBottleCreatedToDatabase(token: TokenSymbol, from?: Date) {
       if (rows.length > 0) {
         const lastRecord = rows[rows.length - 1];
         updateLastFetchedTimestamp(
+          "Bucket",
           `${token}_Bottle_Created`,
           lastRecord.timestamp,
         );
@@ -86,8 +73,9 @@ async function cloneBottleCreatedToDatabase(token: TokenSymbol, from?: Date) {
         }
       } else {
         updateLastFetchedTimestamp(
+          "Bucket",
           `${token}_Bottle_Created`,
-           new Date().toISOString(),
+          new Date().toISOString(),
         );
         logger.info("No response data");
         fetching = false;
@@ -125,11 +113,11 @@ function convertSentioBottleCreatedEventToDBSchema(
         sender,
         timestamp,
         transaction_hash,
-      }) as Tables<"Bottle Create">,
+      }) as BucketTables<"Bottle_Create">,
   );
 }
 
-async function insertBottleCreateToDB(data: Tables<"Bottle Create">[]) {
+async function insertBottleCreateToDB(data: BucketTables<"Bottle_Create">[]) {
   try {
     // Get all IDs from the incoming data
     const incomingIds = data.map((record) => record.id);
@@ -142,7 +130,7 @@ async function insertBottleCreateToDB(data: Tables<"Bottle Create">[]) {
       for (const chunk of incomingIdChunks) {
         // Check which records already exist
         const [rows] = await connection.query(
-          "SELECT id FROM `Bottle_Create` WHERE id IN (?)",
+          `SELECT id FROM \`${BUCKET_TABLE_NAMES.BOTTLE_CREATE}\` WHERE id IN (?)`,
           [chunk],
         );
 
@@ -198,7 +186,7 @@ async function insertBottleCreateToDB(data: Tables<"Bottle Create">[]) {
           .join(", ");
 
         const query = `
-          INSERT INTO Bottle_Create 
+          INSERT INTO ${BUCKET_TABLE_NAMES.BOTTLE_CREATE} 
           (id, bottle_id, buck_amount, coin, collateral_amount, sender, timestamp, transaction_hash) 
           VALUES ${placeholders}
         `;
@@ -260,6 +248,7 @@ async function cloneBottleUpdatedToDatabase(token: TokenSymbol, from?: Date) {
       if (rows.length > 0) {
         const lastRecord = rows[rows.length - 1];
         updateLastFetchedTimestamp(
+          "Bucket",
           `${token}_Bottle_Updated`,
           lastRecord.timestamp,
         );
@@ -279,6 +268,7 @@ async function cloneBottleUpdatedToDatabase(token: TokenSymbol, from?: Date) {
         fetching = false;
 
         updateLastFetchedTimestamp(
+          "Bucket",
           `${token}_Bottle_Updated`,
           new Date().toISOString(),
         );
@@ -320,11 +310,11 @@ function convertSentioBottleUpdatedEventToDBSchema(
         transaction_hash,
         buck_change_amount,
         collateral_change_amount,
-      }) as Tables<"Bottle Update">,
+      }) as BucketTables<"Bottle_Update">,
   );
 }
 
-async function insertBottleUpdateToDB(data: Tables<"Bottle Update">[]) {
+async function insertBottleUpdateToDB(data: BucketTables<"Bottle_Update">[]) {
   try {
     // Get all IDs from the incoming data
     const incomingIds = data.map((record) => record.id);
@@ -337,7 +327,7 @@ async function insertBottleUpdateToDB(data: Tables<"Bottle Update">[]) {
       for (const chunk of incomingIdChunks) {
         // Check which records already exist
         const [rows] = await connection.query(
-          "SELECT id FROM `Bottle_Update` WHERE id IN (?)",
+          `SELECT id FROM \`${BUCKET_TABLE_NAMES.BOTTLE_UPDATE}\` WHERE id IN (?)`,
           [chunk],
         );
 
@@ -394,7 +384,7 @@ async function insertBottleUpdateToDB(data: Tables<"Bottle Update">[]) {
         });
 
         const query = `
-          INSERT INTO Bottle_Update 
+          INSERT INTO ${BUCKET_TABLE_NAMES.BOTTLE_UPDATE} 
           (id, bottle_id, buck_amount, coin, collateral_amount, sender, timestamp, transaction_hash, 
            buck_change_amount, collateral_change_amount) 
           VALUES ${placeholders}
@@ -440,7 +430,7 @@ function convertSentioBottleDestroyedEventToDBSchema(
         sender,
         timestamp,
         transaction_hash,
-      }) as Tables<"Bottle Destroy">,
+      }) as BucketTables<"Bottle_Destroy">,
   );
 }
 
@@ -482,6 +472,7 @@ async function cloneBottleDestroyedToDatabase(token: TokenSymbol, from?: Date) {
       if (rows.length > 0) {
         const lastRecord = rows[rows.length - 1];
         updateLastFetchedTimestamp(
+          "Bucket",
           `${token}_Bottle_Destroyed`,
           lastRecord.timestamp,
         );
@@ -500,8 +491,9 @@ async function cloneBottleDestroyedToDatabase(token: TokenSymbol, from?: Date) {
         logger.info("No response data");
         fetching = false;
         updateLastFetchedTimestamp(
+          "Bucket",
           `${token}_Bottle_Destroyed`,
-          new Date().toISOString()
+          new Date().toISOString(),
         );
       }
     }
@@ -514,7 +506,7 @@ async function cloneBottleDestroyedToDatabase(token: TokenSymbol, from?: Date) {
   }
 }
 
-async function insertBottleDestroyToDB(data: Tables<"Bottle Destroy">[]) {
+async function insertBottleDestroyToDB(data: BucketTables<"Bottle_Destroy">[]) {
   try {
     // Get all IDs from the incoming data
     const incomingIds = data.map((record) => record.id);
@@ -527,7 +519,7 @@ async function insertBottleDestroyToDB(data: Tables<"Bottle Destroy">[]) {
       for (const chunk of incomingIdChunks) {
         // Check which records already exist
         const [rows] = await connection.query(
-          "SELECT id FROM `Bottle_Destroy` WHERE id IN (?)",
+          `SELECT id FROM \`${BUCKET_TABLE_NAMES.BOTTLE_DESTROY}\` WHERE id IN (?)`,
           [chunk],
         );
 
@@ -581,7 +573,7 @@ async function insertBottleDestroyToDB(data: Tables<"Bottle Destroy">[]) {
         });
 
         const query = `
-          INSERT INTO Bottle_Destroy 
+          INSERT INTO ${BUCKET_TABLE_NAMES.BOTTLE_DESTROY} 
           (id, bottle_id, coin, collateral_amount, sender, timestamp, transaction_hash) 
           VALUES ${placeholders}
         `;
@@ -647,6 +639,7 @@ async function cloneBottleLiquidationToDatabase(
       if (rows.length > 0) {
         const lastRecord = rows[rows.length - 1];
         updateLastFetchedTimestamp(
+          "Bucket",
           `${token}_Bottle_Liquidation`,
           lastRecord.timestamp,
         );
@@ -666,8 +659,9 @@ async function cloneBottleLiquidationToDatabase(
         fetching = false;
 
         updateLastFetchedTimestamp(
+          "Bucket",
           `${token}_Bottle_Liquidation`,
-          new Date().toISOString()
+          new Date().toISOString(),
         );
       }
     }
@@ -705,12 +699,12 @@ function convertSentioBottleLiquidationEventToDBSchema(
         profit_usd,
         timestamp,
         transaction_hash,
-      }) as Tables<"Bottle Liquidation">,
+      }) as BucketTables<"Bottle_Liquidation">,
   );
 }
 
 async function insertBottleLiquidationToDB(
-  data: Tables<"Bottle Liquidation">[],
+  data: BucketTables<"Bottle_Liquidation">[],
 ) {
   try {
     // Get all IDs from the incoming data
@@ -724,7 +718,7 @@ async function insertBottleLiquidationToDB(
       for (const chunk of incomingIdChunks) {
         // Check which records already exist
         const [rows] = await connection.query(
-          "SELECT id FROM `Bottle_Liquidation` WHERE id IN (?)",
+          `SELECT id FROM \`${BUCKET_TABLE_NAMES.BOTTLE_LIQUIDATION}\` WHERE id IN (?)`,
           [chunk],
         );
 
@@ -782,7 +776,7 @@ async function insertBottleLiquidationToDB(
         });
 
         const query = `
-          INSERT INTO Bottle_Liquidation 
+          INSERT INTO ${BUCKET_TABLE_NAMES.BOTTLE_LIQUIDATION} 
           (id, bottle_id, coin, collateral_amount, 
            liquidator_address, pool_address, profit_usd, timestamp, transaction_hash) 
           VALUES ${placeholders}
@@ -848,6 +842,7 @@ async function cloneTotalFeeValueFromToDatabase(from?: Date) {
       if (rows.length > 0) {
         const lastRecord = rows[rows.length - 1];
         updateLastFetchedTimestamp(
+          "Bucket",
           `Total_Fee_Value_From`,
           lastRecord.timestamp,
         );
@@ -867,8 +862,9 @@ async function cloneTotalFeeValueFromToDatabase(from?: Date) {
         fetching = false;
 
         updateLastFetchedTimestamp(
+          "Bucket",
           `Total_Fee_Value_From`,
-          new Date().toISOString()
+          new Date().toISOString(),
         );
       }
     }
@@ -900,12 +896,12 @@ function convertSentioTotalFeeValueFromEventToDBSchema(
         timestamp,
         transaction_hash,
         service: from,
-      }) as Tables<"Total Fee Value From">,
+      }) as BucketTables<"Total_Fee_Value_From">,
   );
 }
 
 async function insertTotalFeeValueFromToDB(
-  data: Tables<"Total Fee Value From">[],
+  data: BucketTables<"Total_Fee_Value_From">[],
 ) {
   try {
     // Get all IDs from the incoming data
@@ -919,7 +915,7 @@ async function insertTotalFeeValueFromToDB(
       for (const chunk of incomingIdChunks) {
         // Check which records already exist
         const [rows] = await connection.query(
-          "SELECT id FROM `Total_Fee_Value_From` WHERE id IN (?)",
+          `SELECT id FROM \`${BUCKET_TABLE_NAMES.TOTAL_FEE_VALUE_FROM}\` WHERE id IN (?)`,
           [chunk],
         );
 
@@ -970,7 +966,7 @@ async function insertTotalFeeValueFromToDB(
         });
 
         const query = `
-          INSERT INTO Total_Fee_Value_From 
+          INSERT INTO ${BUCKET_TABLE_NAMES.TOTAL_FEE_VALUE_FROM} 
           (id, coin, fee_value, timestamp, transaction_hash, service) 
           VALUES ${placeholders}
         `;

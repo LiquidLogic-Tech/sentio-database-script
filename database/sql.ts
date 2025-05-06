@@ -6,7 +6,7 @@ export function bottleCreatedScripts(token: TokenSymbol, from?: Date) {
   if (!from) {
     const config = loadConfig();
     const lastTimestamp =
-      config.lastFetchedTimestamp[`${token}_Bottle_Created`];
+      config.LastFetchedTimestamp.Bucket[`${token}_Bottle_Created`];
     if (lastTimestamp) {
       from = new Date(lastTimestamp);
     }
@@ -27,7 +27,7 @@ export function bottleUpdatedScripts(token: TokenSymbol, from?: Date) {
   if (!from) {
     const config = loadConfig();
     const lastTimestamp =
-      config.lastFetchedTimestamp[`${token}_Bottle_Updated`];
+      config.LastFetchedTimestamp.Bucket[`${token}_Bottle_Updated`];
     if (lastTimestamp) {
       from = new Date(lastTimestamp);
     }
@@ -48,7 +48,7 @@ export function bottleDestroyedScripts(token: TokenSymbol, from?: Date) {
   if (!from) {
     const config = loadConfig();
     const lastTimestamp =
-      config.lastFetchedTimestamp[`${token}_Bottle_Destroyed`];
+      config.LastFetchedTimestamp.Bucket[`${token}_Bottle_Destroyed`];
     if (lastTimestamp) {
       from = new Date(lastTimestamp);
     }
@@ -68,7 +68,8 @@ export function bottleLiquidationScripts(token: TokenSymbol, from?: Date) {
   // Load last fetched timestamp if no specific date is provided
   if (!from) {
     const config = loadConfig();
-    const lastTimestamp = config.lastFetchedTimestamp[`${token}_Liquidation`];
+    const lastTimestamp =
+      config.LastFetchedTimestamp.Bucket[`${token}_Liquidation`];
     if (lastTimestamp) {
       from = new Date(lastTimestamp);
     }
@@ -91,7 +92,8 @@ export function totalFeeValueFromScripts(from?: Date) {
   // Load last fetched timestamp if no specific date is provided
   if (!from) {
     const config = loadConfig();
-    const lastTimestamp = config.lastFetchedTimestamp["Total_Fee_Value_From"];
+    const lastTimestamp =
+      config.LastFetchedTimestamp.Bucket["Total_Fee_Value_From"];
     if (lastTimestamp) {
       from = new Date(lastTimestamp);
     }

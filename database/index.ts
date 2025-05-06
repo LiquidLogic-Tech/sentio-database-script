@@ -6,17 +6,18 @@ import {
   cloneBottleLiquidationToDatabase,
   cloneBottleUpdatedToDatabase,
   cloneTotalFeeValueFromToDatabase,
-} from "./commands";
-import { COLLATERAL_COINS } from "./const";
+} from "./commands/bucket";
+import { COLLATERAL_COINS, type TokenSymbol } from "./const";
+import { loadConfig, updateLastFetchedTimestamp } from "./utils";
 
 async function main() {
   for (const coin of COLLATERAL_COINS) {
     logger.info(`Processing ${coin}...`);
     try {
-      await cloneBottleCreatedToDatabase(coin as any);
-      await cloneBottleUpdatedToDatabase(coin as any);
-      await cloneBottleDestroyedToDatabase(coin as any);
-      await cloneBottleLiquidationToDatabase(coin as any);
+      await cloneBottleCreatedToDatabase(coin as TokenSymbol);
+      await cloneBottleUpdatedToDatabase(coin as TokenSymbol);
+      await cloneBottleDestroyedToDatabase(coin as TokenSymbol);
+      await cloneBottleLiquidationToDatabase(coin as TokenSymbol);
       logger.info(`Finished processing ${coin}`);
     } catch (error) {
       logger.error(`Error processing ${coin}:`, error);
