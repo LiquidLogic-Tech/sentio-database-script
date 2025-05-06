@@ -1,20 +1,3 @@
-type PoolType = "BUCKET" | "PIPE" | "PSM";
-
-type PoolHeader = {
-  name: string;
-  poolId: string;
-  poolType: PoolType;
-  outputVolumeDfId: string | null;
-  interestRate: number;
-};
-
-type PoolInfo = {
-  symbol: string;
-  tokenAddress: string;
-  balance: number;
-  decimal: number;
-};
-
 type TokenInfo = {
   symbol: string;
   decimal: number;
