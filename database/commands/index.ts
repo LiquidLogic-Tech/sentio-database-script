@@ -7,7 +7,7 @@ export const pool = mysql.createPool({
   password: process.env.PLANETSCALE_PASSWORD,
   database: process.env.PLANETSCALE_DATABASE,
   ssl: {
-    rejectUnauthorized: false,
+    rejectUnauthorized: true,
   },
   waitForConnections: true,
   connectionLimit: 10,
