@@ -4,6 +4,8 @@ import { type Server } from "bun";
 import { COLLATERAL_COINS } from "../database/const";
 import { BucketClient } from "bucket-protocol-sdk";
 import { getFullnodeUrl, SuiClient } from "@mysten/sui/client";
+import { syncMoleSavingEvents, syncMoleFarmEvents, syncNaviEvents, syncNaviPoolData } from "../database/commands/bucket";
+
 
 // Configure MySQL connection pool
 const pool = mysql.createPool({
@@ -64,6 +66,40 @@ function parseQueryParams(url: URL) {
 function timestampToMs(timestamp: string): number {
   return new Date(timestamp).getTime();
 }
+
+// Sync interval in milliseconds
+const SYNC_INTERVAL = 24 * 60 * 60 * 1000; // 1 day
+
+async function syncAllEvents() {
+  try {
+    console.log("Starting to sync all events...");
+    
+    // Execute all sync tasks in parallel
+    await Promise.all([
+      syncMoleSavingEvents().catch(error => {
+        console.error("Failed to sync Mole Saving events:", error);
+      }),
+      syncMoleFarmEvents().catch(error => {
+        console.error("Failed to sync Mole Farm events:", error);
+      }),
+      syncNaviPoolData().catch(error => {
+        console.error("Failed to sync Navi Pool data:", error);
+      }),
+      syncNaviEvents().catch(error => {
+        console.error("Failed to sync Navi events:", error);
+      })
+    ]);
+
+    console.log("All events sync completed");
+  } catch (error) {
+    console.error("Error occurred during sync:", error);
+  }
+}
+
+// Start periodic sync task
+console.log("Starting periodic sync task, interval:", SYNC_INTERVAL / 1000, "seconds");
+syncAllEvents(); // Execute immediately
+setInterval(syncAllEvents, SYNC_INTERVAL);
 
 const server = Bun.serve({
   port: process.env.PORT || 3000,

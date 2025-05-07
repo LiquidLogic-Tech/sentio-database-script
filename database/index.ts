@@ -6,6 +6,10 @@ import {
   cloneBottleLiquidationToDatabase,
   cloneBottleUpdatedToDatabase,
   cloneTotalFeeValueFromToDatabase,
+  syncMoleSavingEvents,
+  syncMoleFarmEvents,
+  syncNaviEvents,
+  syncNaviPoolData
 } from "./commands/bucket";
 import { COLLATERAL_COINS, type TokenSymbol } from "./const";
 import { loadConfig, updateLastFetchedTimestamp } from "./utils";
@@ -18,6 +22,11 @@ async function main() {
       await cloneBottleUpdatedToDatabase(coin as TokenSymbol);
       await cloneBottleDestroyedToDatabase(coin as TokenSymbol);
       await cloneBottleLiquidationToDatabase(coin as TokenSymbol);
+      
+      await syncMoleSavingEvents();
+      await syncMoleFarmEvents();
+      await syncNaviEvents();
+      await syncNaviPoolData();
       logger.info(`Finished processing ${coin}`);
     } catch (error) {
       logger.error(`Error processing ${coin}:`, error);
