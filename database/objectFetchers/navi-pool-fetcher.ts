@@ -1,39 +1,33 @@
 import { SuiClient, getFullnodeUrl } from "@mysten/sui/client";
 import { getTokenDecimals } from "../utils";
+import { NAVISDKClient } from "navi-sdk";
 
-interface PoolData {
-    balance: string;
+interface PoolInfo {
+    total_supply: number,
+    total_borrow: number,
+    balance: number,
 }
 
 export class NaviPoolFetcher {
-    private client: SuiClient;
-    private readonly NAVI_BUCK_POOL = "0x98953e1c8af4af0cd8f59a52f9df6e60c9790b8143f556751f10949b40c76c50";
+    private client: NAVISDKClient;
 
     constructor() {
-        this.client = new SuiClient({
-            url: getFullnodeUrl('mainnet'),
-        });
+        this.client = new NAVISDKClient();
     }
-
-    async getPoolBalance(): Promise<PoolData> {
-        const pool = await this.client.getObject({
-            id: this.NAVI_BUCK_POOL,
-            options: {
-                showContent: true,
-                showType: true
-            }
+    async getPoolInfo(address: string, symbol: string, decimal: number): Promise<PoolInfo> {
+        const poolInfo = await this.client.getPoolInfo({
+            symbol,
+            address,
+            decimal
         });
-        
-        const content = pool.data?.content as unknown as { fields: { balance: string, treasury_balance: string } };
-        if (content?.fields) {
-            const decimals = getTokenDecimals('BUCK');
-            const balance = BigInt(content.fields.balance);
-            const adjustedBalance = Number(balance) / (10 ** decimals);
-            return {
-                balance: adjustedBalance.toString()
-            };
-        } else {
-            throw new Error("Failed to get pool balance");
+
+        return {
+            total_supply: Number(poolInfo.total_supply),
+            total_borrow: Number(poolInfo.total_borrow),
+            balance: Number(poolInfo.total_supply) - Number(poolInfo.total_borrow)
         }
     }
 }
+
+const fetcher = new NaviPoolFetcher();
+fetcher.getPoolInfo("0xce7ff77a83ea0cb6fd39bd8748e2ec89a3f41e8efdc3f4eb123e0ca37b184db2", "BUCK", 9);
