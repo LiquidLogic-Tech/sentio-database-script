@@ -5,7 +5,7 @@ import { NAVISDKClient } from "navi-sdk";
 interface PoolInfo {
     total_supply: number,
     total_borrow: number,
-    balance: number,
+    pool_amount: number,
 }
 
 export class NaviPoolFetcher {
@@ -24,7 +24,7 @@ export class NaviPoolFetcher {
         return {
             total_supply: Number(poolInfo.total_supply),
             total_borrow: Number(poolInfo.total_borrow),
-            balance: Number(poolInfo.total_supply) - Number(poolInfo.total_borrow)
+            pool_amount: Number(poolInfo.total_supply) - Number(poolInfo.total_borrow)
         }
     }
 }

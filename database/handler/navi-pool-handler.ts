@@ -5,7 +5,7 @@ import type { RowDataPacket } from "mysql2";
 interface NaviPoolData extends RowDataPacket {
     id: number;
     timestamp: Date;
-    balance: string;
+    pool_amount: string;
     asset: string;
     supply_amount: number;
     borrow_amount: number;
@@ -28,11 +28,11 @@ export class NaviPoolHandler {
                 this.BUCK_DECIMAL
             );
             const query = `
-                INSERT INTO Navi_Pool (balance, asset, supply_amount, borrow_amount)
+                INSERT INTO Navi_Pool (pool_amount, asset, supply_amount, borrow_amount)
                 VALUES (?, ?, ?, ?)
             `;
             await pool.execute(query, [
-                poolData.balance,
+                poolData.pool_amount,
                 'BUCK',
                 poolData.total_supply,
                 poolData.total_borrow
