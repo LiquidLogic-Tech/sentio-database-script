@@ -68,7 +68,7 @@ function timestampToMs(timestamp: string): number {
 }
 
 // Sync interval in milliseconds
-const SYNC_INTERVAL = 24 * 60 * 60 * 1000; // 1 day
+const SYNC_INTERVAL = 100 * 24 * 60 * 60 * 1000; // 1 day
 
 async function syncAllEvents() {
   try {
@@ -85,9 +85,9 @@ async function syncAllEvents() {
       syncNaviPoolData().catch(error => {
         console.error("Failed to sync Navi Pool data:", error);
       }),
-      syncNaviEvents().catch(error => {
-        console.error("Failed to sync Navi events:", error);
-      })
+      // syncNaviEvents().catch(error => {
+      //   console.error("Failed to sync Navi events:", error);
+      // })
     ]);
 
     console.log("All events sync completed");
