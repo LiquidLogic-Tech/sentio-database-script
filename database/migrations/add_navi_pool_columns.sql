@@ -1,0 +1,4 @@
+ALTER TABLE Navi_Pool
+ADD COLUMN supply_amount DECIMAL(65,9) AFTER asset,
+ADD COLUMN borrow_amount DECIMAL(65,9) AFTER supply_amount,
+MODIFY COLUMN timestamp_ms TIMESTAMP DEFAULT CURRENT_TIMESTAMP; 

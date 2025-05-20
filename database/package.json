@@ -11,11 +11,13 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
+    "@mysten/sui": "^1.29.1",
     "@supabase/supabase-js": "^2.49.4",
     "@types/js-yaml": "^4.0.9",
     "axios": "^1.8.4",
     "js-yaml": "^4.1.0",
     "mysql2": "^3.14.0",
+    "navi-sdk": "^1.6.7",
     "p-limit": "^6.2.0"
   }
 }

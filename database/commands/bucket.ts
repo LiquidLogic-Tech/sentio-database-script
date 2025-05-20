@@ -5,12 +5,17 @@ import {
   bottleUpdatedScripts,
   totalFeeValueFromScripts,
 } from "../sql";
+import type { EventId } from "@mysten/sui/client";
 import type { TokenSymbol } from "../const";
 import { splitIntoChunks, updateLastFetchedTimestamp } from "../utils";
 import { logger } from "../logger";
 import axios from "axios";
 import { pool } from ".";
 import { BUCKET_TABLE_NAMES, type BucketTables } from "../types/database";
+import { NaviDbHandler } from "../handler/navi-db-handler";
+import { MoleDbHandler } from "../handler/mole-db-handler";
+import { MoleFarmFetcher, MoleSavingFetcher, NaviFetcher } from "../eventFetchers";
+import { NaviPoolHandler } from "../handler/navi-pool-handler";
 
 // Event: Bottle Created
 async function cloneBottleCreatedToDatabase(token: TokenSymbol, from?: Date) {
@@ -989,10 +994,278 @@ async function insertTotalFeeValueFromToDB(
   }
 }
 
+
+async function fetchAllEvents(fetcher: any, isDeposit: boolean, name: string, pool?: string, startCursor: EventId | null = null) {
+  let cursor = startCursor;
+  let totalRawEvents = 0;
+  let page = 1;
+  let allEvents: any[] = [];
+
+  while (true) {
+      logger.info(`\n=== ${name} ${isDeposit ? 'Deposit' : 'Withdraw'} Events - Page ${page} ===`);
+      if (pool) {
+          logger.info(`Pool: ${pool}`);
+      }
+      
+      const result = await fetcher.fetchEvents(isDeposit, cursor, pool);
+      
+      if (!result.rawEventsCount || result.rawEventsCount === 0) {
+          logger.info(`No more raw events found for ${name} ${isDeposit ? 'deposit' : 'withdraw'}`);
+          break;
+      }
+      
+      allEvents = [...allEvents, ...result.events];
+      totalRawEvents += result.rawEventsCount;
+      logger.info(`Total filtered events so far: ${allEvents.length}`);
+      logger.info(`Total raw events so far: ${totalRawEvents}`);
+      
+      if (!result.nextCursor) {
+          logger.info(`Reached the end for ${name} ${isDeposit ? 'deposit' : 'withdraw'}`);
+          break;
+      }
+
+      cursor = result.nextCursor;
+      page++;
+  }
+
+  return allEvents;
+}
+
+async function syncMoleSavingEvents() {
+  try {
+      // Get the last event from Mole Saving (both deposit and withdraw)
+      const [lastSavingDepositEvent, lastSavingWithdrawEvent] = await Promise.all([
+          MoleDbHandler.getLatestEvent(true),
+          MoleDbHandler.getLatestEvent(false)
+      ]);
+      
+      let savingCursor = null;
+      if (lastSavingDepositEvent?.[0] || lastSavingWithdrawEvent?.[0]) {
+          // Compare timestamps and use the latest one
+          const depositTimestamp = lastSavingDepositEvent?.[0]?.timestamp || 0;
+          const withdrawTimestamp = lastSavingWithdrawEvent?.[0]?.timestamp || 0;
+          const latestEvent = depositTimestamp > withdrawTimestamp ? lastSavingDepositEvent![0] : lastSavingWithdrawEvent![0];
+          
+          savingCursor = {
+              txDigest: latestEvent.event_id.substring(0, 44),
+              eventSeq: latestEvent.event_id.substring(44)
+          };
+      }
+
+      logger.info('\n=== Starting Mole Saving Events Fetch ===');
+      const savingFetcher = new MoleSavingFetcher();
+      
+      const savingDepositEvents = await fetchAllEvents(savingFetcher, true, 'Mole Saving', undefined, savingCursor);
+      const savingWithdrawEvents = await fetchAllEvents(savingFetcher, false, 'Mole Saving', undefined, savingCursor);
+      
+      // Calculate balance changes
+      let savingDepositBalance = 0;
+      const savingDepositEventsWithBalance = savingDepositEvents.map(event => {
+          const assetChange = Number(event.asset_change);
+          const previousBalance = savingDepositBalance;
+          savingDepositBalance += assetChange;
+          return {
+              ...event,
+              accumulation: savingDepositBalance.toString()
+          };
+      });
+
+      let savingWithdrawBalance = 0;
+      const savingWithdrawEventsWithBalance = savingWithdrawEvents.map(event => {
+          const assetChange = Number(event.asset_change);
+          const previousBalance = savingWithdrawBalance;
+          savingWithdrawBalance += assetChange;
+          return {
+              ...event,
+              accumulation: savingWithdrawBalance.toString()
+          };
+      });
+
+      // Save Mole Saving Events
+      logger.info('\n=== Saving Mole Saving Events to Database ===');
+      for (const event of savingDepositEventsWithBalance) {
+          await MoleDbHandler.insertEvent(event, true);
+      }
+      for (const event of savingWithdrawEventsWithBalance) {
+          await MoleDbHandler.insertEvent(event, false);
+      }
+  } catch (error) {
+      logger.error('Error syncing Mole Saving events:', error);
+      throw error;
+  }
+}
+
+async function syncMoleFarmEvents() {
+  try {
+      // Get the last event from each Mole Farm pool (both deposit and withdraw)
+      const farmPools = [
+          "0x4c50ba9d1e60d229800293a4222851c9c3f797aa5ba8a8d32cc67ec7e79fec60", // USDC-BUCK
+          "0x59cf0d333464ad29443d92bfd2ddfd1f794c5830141a5ee4a815d1ef3395bf6c"  // BUCK-SUI
+      ];
+      
+      let farmCursor = null;
+      for (const pool of farmPools) {
+          const [lastFarmDepositEvent, lastFarmWithdrawEvent] = await Promise.all([
+            MoleDbHandler.getLatestFarmEvent(true),
+            MoleDbHandler.getLatestFarmEvent(false)
+          ]);
+
+          if (lastFarmDepositEvent?.[0] || lastFarmWithdrawEvent?.[0]) {
+              // Compare timestamps and use the latest one
+              const depositTimestamp = lastFarmDepositEvent?.[0]?.timestamp || 0;
+              const withdrawTimestamp = lastFarmWithdrawEvent?.[0]?.timestamp || 0;
+              const latestEvent = depositTimestamp > withdrawTimestamp ? lastFarmDepositEvent![0] : lastFarmWithdrawEvent![0];
+              
+              const currentCursor = {
+                  txDigest: latestEvent.event_id.substring(0, 44),
+                  eventSeq: latestEvent.event_id.substring(44)
+              };
+              // Update farmCursor if it's null or if current cursor has a newer timestamp
+              if (!farmCursor || parseInt(currentCursor.eventSeq) > parseInt(farmCursor.eventSeq)) {
+                  farmCursor = currentCursor;
+              }
+          }
+      }
+
+      logger.info('\n=== Starting Mole Farm Events Fetch ===');
+      const farmFetcher = new MoleFarmFetcher();
+
+      for (const pool of farmPools) {
+          logger.info(`\nProcessing pool: ${pool}`);
+          const farmDepositEvents = await fetchAllEvents(farmFetcher, true, 'Mole Farm', pool, farmCursor);
+          const farmWithdrawEvents = await fetchAllEvents(farmFetcher, false, 'Mole Farm', pool, farmCursor);
+          
+          // Calculate pool balance changes
+          let poolDepositBalanceA = 0;
+          let poolDepositBalanceB = 0;
+          const farmDepositEventsWithBalance = farmDepositEvents.map(event => {
+              const assetChangeA = Number(event.asset_change_a);
+              const assetChangeB = Number(event.asset_change_b);
+              const previousBalanceA = poolDepositBalanceA;
+              const previousBalanceB = poolDepositBalanceB;
+              poolDepositBalanceA += assetChangeA;
+              poolDepositBalanceB += assetChangeB;
+              return {
+                  ...event,
+                  pool_balance_a: poolDepositBalanceA.toString(),
+                  pool_balance_b: poolDepositBalanceB.toString()
+              };
+          });
+
+          let poolWithdrawBalanceA = 0;
+          let poolWithdrawBalanceB = 0;
+          const farmWithdrawEventsWithBalance = farmWithdrawEvents.map(event => {
+              const assetChangeA = Number(event.asset_change_a);
+              const assetChangeB = Number(event.asset_change_b);
+              const previousBalanceA = poolWithdrawBalanceA;
+              const previousBalanceB = poolWithdrawBalanceB;
+              poolWithdrawBalanceA += assetChangeA;
+              poolWithdrawBalanceB += assetChangeB;
+              return {
+                  ...event,
+                  pool_balance_a: poolWithdrawBalanceA.toString(),
+                  pool_balance_b: poolWithdrawBalanceB.toString()
+              };
+          });
+
+          // Save Mole Farm Events
+          logger.info(`\n=== Saving Mole Farm Events to Database for Pool ${pool} ===`);
+          for (const event of farmDepositEventsWithBalance) {
+              await MoleDbHandler.insertFarmEvent(event, true);
+          }
+          for (const event of farmWithdrawEventsWithBalance) {
+              await MoleDbHandler.insertFarmEvent(event, false);
+          }
+      }
+  } catch (error) {
+      logger.error('Error syncing Mole Farm events:', error);
+      throw error;
+  }
+}
+
+async function syncNaviEvents() {
+  try {
+      // Get the last event from Navi (both deposit and withdraw)
+      const [lastNaviDepositEvent, lastNaviWithdrawEvent] = await Promise.all([
+          NaviDbHandler.getLatestEvent(true),
+          NaviDbHandler.getLatestEvent(false)
+      ]);
+      
+      let naviCursor = null;
+      if (lastNaviDepositEvent?.[0] || lastNaviWithdrawEvent?.[0]) {
+          // Compare timestamps and use the latest one
+          const depositTimestamp = lastNaviDepositEvent?.[0]?.timestamp || 0;
+          const withdrawTimestamp = lastNaviWithdrawEvent?.[0]?.timestamp || 0;
+          const latestEvent = depositTimestamp > withdrawTimestamp ? lastNaviDepositEvent![0] : lastNaviWithdrawEvent![0];
+          
+          naviCursor = {
+              txDigest: latestEvent.event_id.substring(0, 44),
+              eventSeq: latestEvent.event_id.substring(44)
+          };
+      }
+
+      logger.info('\n=== Starting Navi Events Fetch ===');
+      const naviFetcher = new NaviFetcher();
+      
+      const naviDepositEvents = await fetchAllEvents(naviFetcher, true, 'Navi', undefined, naviCursor);
+      const naviWithdrawEvents = await fetchAllEvents(naviFetcher, false, 'Navi', undefined, naviCursor);
+      
+      // Calculate balance changes
+      let naviDepositBalance = 0;
+      const naviDepositEventsWithBalance = naviDepositEvents.map(event => {
+          const assetChange = Number(event.asset_change);
+          const previousBalance = naviDepositBalance;
+          naviDepositBalance += assetChange;
+          return {
+              ...event,
+              accumulation: naviDepositBalance.toString()
+          };
+      });
+
+      let naviWithdrawBalance = 0;
+      const naviWithdrawEventsWithBalance = naviWithdrawEvents.map(event => {
+          const assetChange = Number(event.asset_change);
+          const previousBalance = naviWithdrawBalance;
+          naviWithdrawBalance += assetChange;
+          return {
+              ...event,
+              accumulation: naviWithdrawBalance.toString()
+          };
+      });
+
+      // Save Navi Events
+      logger.info('\n=== Saving Navi Events to Database ===');
+      for (const event of naviDepositEventsWithBalance) {
+          await NaviDbHandler.insertEvent(event, true);
+      }
+      for (const event of naviWithdrawEventsWithBalance) {
+          await NaviDbHandler.insertEvent(event, false);
+      }
+  } catch (error) {
+      logger.error('Error syncing Navi events:', error);
+      throw error;
+  }
+}
+
+export async function syncNaviPoolData() {
+    try {
+        console.log("Starting to sync Navi Pool data...");
+        const handler = new NaviPoolHandler();
+        await handler.insertPoolData();
+        console.log("Navi Pool data sync completed");
+    } catch (error) {
+        console.error("Failed to sync Navi Pool data:", error);
+        throw error;
+    }
+}
+
 export {
   cloneBottleCreatedToDatabase,
   cloneBottleUpdatedToDatabase,
   cloneBottleDestroyedToDatabase,
   cloneBottleLiquidationToDatabase,
   cloneTotalFeeValueFromToDatabase,
+  syncMoleSavingEvents,
+  syncMoleFarmEvents,
+  syncNaviEvents
 };

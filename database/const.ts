@@ -421,3 +421,18 @@ export const COINS_TYPE_LIST: Record<TokenSymbol, string> = {
   haWAL:
     "0x8b4d553839b219c3fd47608a0cc3d5fcc572cb25d41b7df3833208586a8d2470::hawal::HAWAL",
 };
+
+export const EVENT_TABLES = {
+  MOLE_SAVING: {
+      DEPOSIT: 'Mole_Saving_Deposit',
+      WITHDRAW: 'Mole_Saving_Withdraw'
+  },
+  MOLE_FARM: {
+      DEPOSIT: 'Mole_Farm_Deposit',
+      WITHDRAW: 'Mole_Farm_Withdraw'
+  },
+  NAVI: {
+      DEPOSIT: 'Navi_Deposit',
+      WITHDRAW: 'Navi_Withdraw'
+  }
+} as const; 
