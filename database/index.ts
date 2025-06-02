@@ -11,10 +11,13 @@ import {
   syncMoleSavingEvents,
   syncMoleFarmEvents,
   syncNaviEvents,
-  syncNaviPoolData
+  syncNaviPoolData,
 } from "./commands/bucket";
 import { COLLATERAL_COINS, type TokenSymbol } from "./const";
 import { loadConfig, updateLastFetchedTimestamp } from "./utils";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const retry = async <T>(
   fn: () => Promise<T>,
@@ -79,24 +82,25 @@ const job = new CronJob(
     } catch (error) {
       logger.error("Scheduled sync failed:", error);
     }
+    process.on("SIGTERM", () => {
+      logger.info("Received SIGTERM signal. Stopping cron job...");
+      job.stop();
+      process.exit(0);
+    });
+
+    process.on("SIGINT", () => {
+      logger.info("Received SIGINT signal. Stopping cron job...");
+      job.stop();
+      process.exit(0);
+    });
   },
   null, // onComplete
   true, // start immediately
   "UTC", // timezone
 );
 
-// Handle graceful shutdown
-process.on("SIGTERM", () => {
-  logger.info("Received SIGTERM signal. Stopping cron job...");
-  job.stop();
-  process.exit(0);
-});
-
-process.on("SIGINT", () => {
-  logger.info("Received SIGINT signal. Stopping cron job...");
-  job.stop();
-  process.exit(0);
-});
-
-// Start the job
+//Start the job
 job.start();
+
+
+// main().catch(console.error);
