@@ -1,5 +1,9 @@
 import path from "path";
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 export const CONFIG_PATH = path.join(__dirname, "config.yaml");
 
 export const COLLATERAL_COINS = [
